@@ -136,27 +136,6 @@ def save(context, filepath):
 # ----------------------------------------------------------------------------
 # returns a byte array containing one chunk's worth of data
 def operate_chunk_order(fileHandler, loop):
-    # unsigned long magic; // chunk-specific magic marker
-    # unsigned long lenFile; // length of chunk following this value
-    # unsigned long version; // chunk-specific format version
-    # unsigned long timeStamp; // time stamp of chunk creation
-    # unsigned long ofsName; // offset of chunk name string from start of chunk
-    #                        // If this value is zero, the chunk is nameless
-    #SCpjChunkHeader = struct.unpack_from("IIIII", data, idx)
-
-    # decode chunk type
-    #magic = data[idx:idx + 4].decode()
-    #version = SCpjChunkHeader[2]
-
-    #if SCpjChunkHeader[4] > 0:
-    #    name = ctypes.create_string_buffer(
-    #            data[idx + SCpjChunkHeader[4]:]).value.decode()
-    #else:
-    #    name = "nameless"
-
-    # chunk header decoding is unneccesary because the chunk methods
-    # will make them
-
     # !!!ASSUME
     # Assuming chunk order is irrelivant, and that I can write them
     # to file in MAC->GEO->SRF->LOD->SKL->FRM->SEQ order
@@ -179,7 +158,9 @@ def operate_chunk_order(fileHandler, loop):
     # if the dict works we'll probably put this back in the save method
     # where it went originally
 
+    # or return format_data(functionDict[loop]()) if you wanna be extra
     newData = functionDict[loop]()
+    newData = format_data(newData)
     return newData
 
     if loop == 0:
@@ -208,12 +189,26 @@ def operate_chunk_order(fileHandler, loop):
     # seek to next chunk (16 bit aligned)
     return #SCpjChunkHeader[1] + (SCpjChunkHeader[1] % 2) + 8
 
+# ----------------------------------------------------------------------------
+def format_data(data):
+    pass
+
 
 # ----------------------------------------------------------------------------
 def chunk_mac(data, idx, name):
     print("Cannibal Model Actor Configuration Chunk (MAC)")
     print("- '%s'" % name)
     print("! unsupported")
+
+    # MACs have no functional eqivelant in Blender, since MACs are sensitive
+    # to the install path of the Cannibal Editor itself. However,
+    # the autoexec MAC is required and has easily defined values. So,
+    # this exporter will only add that MAC for now.
+    # See line 122 of CpjFmt.h for more details
+    # 
+    # Study the importer. It (probably?) knows how to shift everything
+    # To keep the data aligned 
+
     return
 
     # What is a MAC in the context of blender
