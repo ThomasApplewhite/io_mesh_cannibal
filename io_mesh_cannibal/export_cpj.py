@@ -37,26 +37,41 @@ import bmesh
 CPJ_HDR_RIFF_MAGIC = struct.unpack("I", b"RIFF")[0]
 CPJ_HDR_FORM_MAGIC = struct.unpack("I", b"CPJB")[0]
 
-CPJ_FRM_MAGIC = "FRMB"
-CPJ_FRM_VERSION = 1
-CPJ_GEO_MAGIC = "GEOB"
-CPJ_GEO_VERSION = 1
-CPJ_LOD_MAGIC = "LODB"
-CPJ_LOD_VERSION = 3
-CPJ_MAC_MAGIC = "MACB"
-CPJ_MAC_VERSION = 1
-CPJ_SEQ_MAGIC = "SEQB"
-CPJ_SEQ_VERSION = 1
-CPJ_SKL_MAGIC = "SKLB"
-CPJ_SKL_VERSION = 1
-CPJ_SRF_MAGIC = "SRFB"
-CPJ_SRF_VERSION = 1
+# 0 for Magic number, 1 for Version, 2 for function
+chunkDataDict = {
+        0 : ["MACB", 1, chunk_mac],
+        1 : ["GEOB", 1, chunk_geo],
+        2 : ["SRFB", 1, chunk_srf],
+        3 : ["LODB", 3, chunk_lod],
+        4 : ["SKLB", 1, chunk_skl],
+        5 : ["FRMB". 1, chunk_frm],
+        6 : ["SEQB", 1, chunk_seq]
+}
 
+startingChunkNames = {
+    0 : [""],
+    1 : [""],
+    2 : [""],
+    3 : [""],
+    4 : [""],
+    5 : [""],
+    6 : [""]
+}
+
+chunkNames = startingChunkNames
+
+chunkImplemented = {
+        "MACB" : True,
+        "GEOB" : False,
+        "SRFB" : False,
+        "LODB" : False,
+        "SKLB" : False,
+        "FRMB" : False,
+        "SEQB" : False
+}
 
 # ----------------------------------------------------------------------------
 def save(context, filepath):
-    # raise Exception('Exporting CPJ is not supported')
-    # return {'CANCELLED'}
 
     # info
     print("Writing to %s..." % filepath)
@@ -74,6 +89,10 @@ def save(context, filepath):
         # recovery logic? or just warn of overrite?
         pass
 
+    # reset chunk names, just in case
+    chunkNames = startingChunkNames
+
+    # write data into chunks
     with open(temppath, mode="ab") as handle:
         # erase present data
         handle.truncate(0)
@@ -82,19 +101,26 @@ def save(context, filepath):
         bl_object = None
         has_surface_already = False
 
-        # chunks order workaround
-        # loop 0: MAC
-        # loop 1: GEO
-        # loop 2: SRF
-        # loop 3: rest
-        for loop in range(4):
+        # Write one of each chunk type
+        for loop in range(6):
 
-            output_array = operate_chunk_order(handle, loop)
+            output_array = make_chunk(chunkIndex)
             # data manipulation here
-            handle.write(output_array)
+            # if no chunk is created, don't write anything
+            if output_array != False:
+                handle.write(output_array)
 
-    # header logic
+        # after all chunks are processed, add the autoexec MAC
+        output_array = create_autoexec_mac()
+        handle.write(output_array)
+    # Chunk order is irrelivant, I write them
+    # to file in MAC->GEO->SRF->LOD->SKL->FRM->SEQ order,
+    # with the autoexec chunk at the end
+    # ----------
+
+    # write to destination file
     with open(filepath, "ab") as destinationHandle:
+        # first write header
         dataArray = bytearray()
 
         # get tempfile size for header
@@ -112,16 +138,14 @@ def save(context, filepath):
         # write header
         destinationHandle.write(dataArray)
 
+        # then write temp file to destination file
         with open (temppath, "rb") as dataHandle:
             print("Writing to Destination File")
             for line in dataHandle:
-
-                # !!!ASSUME
-                # making some assumptions here:
-                # 1: no ASCII encoding occurs in binary read mode
-                # (that is, line will be written as binary)
-                # 2: It's acceptable to load the entire file at once
-                # into memory because the importer does it lol
+                # I !!!ASSSUME that because there shouldn't be any newlines
+                # in the tempfile, then the for->in version of getline
+                # (which doesn't have a byte limit) will load the entire file
+                # into memory at once. That's no good.
                 destinationHandle.write(line)
 
         
@@ -135,133 +159,200 @@ def save(context, filepath):
 
 # ----------------------------------------------------------------------------
 # returns a byte array containing one chunk's worth of data
-def operate_chunk_order(fileHandler, loop):
-    # !!!ASSUME
-    # Assuming chunk order is irrelivant, and that I can write them
-    # to file in MAC->GEO->SRF->LOD->SKL->FRM->SEQ order
+def make_chunk(chunkIndex):
+    # 0 for Magic Number, 1 for Chunk version, 2 for Creation function
+    # chunk creation goes outside so the name can be
+    # properly initialized
+    createdChunk = chunkDataDict[chunkIndex][2]()
+    if createdChunk == False:
+        return False
 
-    functionDict = {
-        0 : chunk_mac,
-        1 : chunk_geo,
-        2 : chunk_srf,
-        3 : chunk_lod,
-        4 : chunk_skl,
-        5 : chunk_frm,
-        6 : chunk_seq
-    }
-
-    newData = bytearray()
-    # delegate
-    # not sure what signature I'm gonna need since data comes from
-    # blender. Let's just not have one right now.
-
-    # if the dict works we'll probably put this back in the save method
-    # where it went originally
-
-    # or return format_data(functionDict[loop]()) if you wanna be extra
-    newData = functionDict[loop]()
-    newData = format_data(newData)
-    return newData
-
-    if loop == 0:
-        chunk_mac(data, idx, name)
-
-    elif loop == 1:
-        # will fail if multiple geos
-        chunk_geo(data, idx, name)
-
-    elif loop == 2:
-        # will fail if multiple srf
-        # but we can assume a geo will exist
-        chunk_srf(data, idx, name, bl_object)
-    elif loop == 3:
-        chunk_lod(data, idx, name)
-    elif loop == 4:
-        chunk_skl(data, idx, name)
-    elif loop == 5:
-        chunk_frm(data, idx, name)
-    elif loop == 6:
-        chunk_seq(data, idx, name)
-    else:
-        # nothing should happen here so it should be fine?
-        pass
-
-    # seek to next chunk (16 bit aligned)
-    return #SCpjChunkHeader[1] + (SCpjChunkHeader[1] % 2) + 8
+    return format_data(
+            chunkDataDict[chunkIndex][0],
+            chunkDataDict[chunkIndex][1],
+            chunkNames[chunkIndex][0],
+            createdChunk
+    )
 
 # ----------------------------------------------------------------------------
-def format_data(data):
-    pass
+def format_data(chunkMagicNumber, chunkVersion, chunkName, data):
+    # Every chunk needs to have a chunk header that follows the following
+    # conventions found on line 29
+
+    # The header looks like this:
+    #struct SCpjChunkHeader
+    #unsigned long magic; // chunk-specific magic marker
+    #unsigned long lenFile; // length of chunk following this value
+    #unsigned long version; // chunk-specific format version
+    #unsigned long timeStamp; // time stamp of chunk creation
+    #unsigned long ofsName; // offset of chunk name string from start of chunk
+    #                      // If this value is zero, the chunk is nameless
+
+    # Additionally, the chunk must have an extra byte added to it (WITHOUT
+    # INCLUDING IT IN LENFILE) to make the chunk be RIFF compliant
+
+    headerData = bytearray()
+
+    struct.pack_int(
+            "IIIII",
+            headerData,     
+            chunkMagicNumber
+            len(data)        # !!!ASSUME we don't need to count header
+            chunkVersion,
+            0,               # Because chunks have no meaningful equivelant
+                                # in blender, this will be defined as the
+                                # the time of export. However, idk how 
+                                # times are formatted in Cannibal longs,
+                                # so for now it's zero.
+            len(chunkName)   # Len of name I !!!ASSUME
+                                #  Legally it's the offset of 
+                                # the chunk name string from 
+                                # the start of the chunk, which I !!!ASSUME
+                                # is functionally equivilant here
+                                # If chunk is nameless, this should be 0
+    )
+
+    headerData.append(chunkName)
+    headerData.append(data)
+
+    # not super efficient but whatever
+    # If not even chunk size...
+    if len(headerData) % 2 != 0:
+        # append empty byte for RIFF compatability
+        headerData.append(b'\0')
+
+    return headerData
+
 
 
 # ----------------------------------------------------------------------------
-def chunk_mac(data, idx, name):
+def chunk_mac():
     print("Cannibal Model Actor Configuration Chunk (MAC)")
-    print("- '%s'" % name)
-    print("! unsupported")
+    print("Custom MAC export not supported")
+
+    return False
 
     # MACs have no functional eqivelant in Blender, since MACs are sensitive
-    # to the install path of the Cannibal Editor itself. However,
-    # the autoexec MAC is required and has easily defined values. So,
-    # this exporter will only add that MAC for now.
-    # See line 122 of CpjFmt.h for more details
-    # 
-    # Study the importer. It (probably?) knows how to shift everything
-    # To keep the data aligned 
+    # to the install path of the Cannibal Editor itself.  Extensions for MACs
+    # outside the 'autoexec' MAC probably need further blender addons. Thus,
+    # all MACs other than the autoexec MAC will be skipped.
 
-    return
-
-    # What is a MAC in the context of blender
-
-    print("Cannibal Model Actor Configuration Chunk (MAC)")
-
-    # unsigned long numSections; // number of sections
-    # unsigned long ofsSections; // offset of sections in data block
-    # unsigned long numCommands; // number of commands
-    # unsigned long ofsCommands; // offset of command strings in data block
-    SMacFile = struct.unpack_from("IIII", data, idx + 20)
-
-    print("- '%s'" % name)
-    print("- %d Sections" % SMacFile[0])
-    print("- %d Commands" % SMacFile[2])
-
-    # offset
-    block = idx + 20 + 16
-
-    # read sections
-    shift = block + SMacFile[1]
-    for i in range(SMacFile[0]):
-
-        # unsigned long ofsName // offset of section name string in data block
-        # unsigned long numCommands // number of command strings in section
-        # unsigned long firstCommand // first command string index
-        SMacSection = struct.unpack_from("III", data, shift)
-
-        section = ctypes.create_string_buffer(
-            data[block + SMacSection[0]:]).value.decode()
-
-        # read commands
-        count = SMacSection[1]
-        for j in range(count):
-
-            ofs = struct.unpack_from("I", data,
-                                     block + SMacFile[3] + (SMacSection[2] + j) * 4)[0]
-            command = ctypes.create_string_buffer(
-                data[block + ofs:]).value.decode()
-
-            print("+ #%d %s %d/%d : %s" %
-                  (i + 1, section, j + 1, count, command))
-
-        # next section
-        shift += 12
+    # just remember that MAC chunks go
+    # chunk header -> MAC header -> section headers -> commands
+    # and that commands need to have a null terminator
 
 
+def create_autoexec_mac():
+    sectionData = bytearray()
+    sectionHeader = bytearray()
+
+    # The 0 is the index of the first command. Not sure
+    # what it does for us, since it doesn't directly point to a byte
+    # in data. But that's fine, I can set it to something useful later.
+    struct.pack_into("III", sectionHeader, "autoexec\0", 11, 0)
+    
+
+    # And now we literally just append every command to the data.
+    # encode encodes to ASCII by default
+
+    # name and description
+    auth_name = f"SetAuthor(\"{""}\")\0" # find .blend file author
+    desc = f"SetDescription(\"{""}\")\0" # fund .blend file desc
+    sectionData += auth_name.encode()
+    sectionData += desc.encode()
+
+    # default transform values
+    # it seems world transforms are readonly in blender, so I can just
+    # hardcode these to the defaults at line 213-218 of the cpj spec
+    origin = f"SetOrigin({0}, {0}, {0})\0"
+    scale = f"SetScale({1}, {1}, {1})\0"
+    rot = f"SetRotation({0}, {0}, {0})\0"
+    sectionData += origin.encode()
+    sectionData += origin.encode()
+    sectionData += origin.encode()
+
+    # default chunks
+    # these are funky for a few reasons:
+    # 1: the chunk paths are relative to ???, where as their names
+    # depend on ??
+    # 2: with the exception of the geometry chunk, they might not
+    # even be there. For now, that will be handled by adding an
+    # empty file path
+
+    # so, where do I want to get these file paths...?
+    # Because the exporter works within the scope of the 
+    # the cannibal file itself, the names of each chunk
+    # is a sufficient file path
+
+    if(chunkImplemented["GEOB"]):
+        geo = f"SetGeometry(\"{chunkNames[1]}\")\0"
+        sectionData += geo.encode()
+    else:
+        raise ExportError("Cannibal file must have at least 1 Geometry Chunk")
+
+    # The number is represents what kind of surface this chunk is: 0 for
+    # primary, any positive number for decals. Right now, we only support
+    # primaries.
+    srf = f"SetSurface({0}, \"{chunkNames[2]}\")\0"
+            if chunkImplemented["SRFB"] else "SetSurface(0, \"\")\0"
+
+    lod = f"SetLodData(\"{chunkName[3]}\")\0"
+            if chunkImplemented["LODB"] else "SetLodData(\"\")\0"
+
+    skl = f"SetSkeleton(\"{chunkNames[4]}\")\0"
+            if chunkImplemented["SKLB"] else "SetSkeleton(\"\")\0"
+
+    # This could also point to a completely seperate Cannibal project.
+    # Maybe support for that should be added
+    # NULL will point to a config project in Cannibal itself
+    frm = f"AddFrames(\"{chunkNames[5]}\")\0"
+            if chunkImplemented["FRMB"] else "AddFrames(\"NULL\")\0"
+
+    # This could also point to a completely seperate Cannibal project.
+    # Maybe support for that should be added
+    # NULL will point to a config project in Cannibal itself
+    seq = f"AddSequences(\"{chunkNames[6]}\")\0"
+            if chunkImplemented["SEQB"] else "AddSequences(\"NULL\")\0"
+
+    # then append literally all of them
+    sectionData += srf.encode()
+    sectionData += lod.encode()
+    sectionData += skl.encode()
+    sectionData += frm.encode()
+    sectionData += seq.encode()
+
+    # then we need the MAC header
+    chunkHeader = bytearray()
+    onlyAutoexec = True
+    if(onlyAutoexec):
+        struct.pack_into(
+                "IIII", 
+                mac_header, 
+                1,  # only one section, autoexec 
+                0,  # if offset is beginning, this is 0. If it's end, it's 12
+                autoexecCommandCount, 
+                12  # only one section means the commands start 12 bytes after
+                    # the sections
+                    # if offset is beginning, this is 12. If it's end, it's
+                    # len(autoexecData)
+    )
+
+    
+    # finally, the chunk header itself
+    newData = chunkHeader + sectionHeader + sectionData
+    return format_data(chunkDataDict[0][0], chunkDataDict[0][1], "autoexec", newData)
+
+    
 # ----------------------------------------------------------------------------
 def chunk_geo(context):
     # !!!ASSUME
     # not an assumption but make sure to error multiple geo blocks
     # (that is, error if there are multiple blender objects)
     print("Geometry Chunk (GEO)")
+    print("- '%s'" % name)
+    print("! unsupported")
+    return False
+
 
     geoArray = bytearray()
     geoBuffer = bytearray()
@@ -437,7 +528,7 @@ def chunk_srf(data, idx, name, bl_object):
     print("Surface Chunk (SRF)")
     print("- '%s'" % name)
     print("! unsupported")
-    return
+    return False
 
 
     print("Surface Chunk (SRF)")
@@ -548,6 +639,7 @@ def chunk_lod(data, idx, name):
     print("Level Of Detail Chunk (LOD)")
     print("- '%s'" % name)
     print("! unsupported")
+    return False
 
 
 # ----------------------------------------------------------------------------
@@ -555,6 +647,7 @@ def chunk_skl(data, idx, name):
     print("Skeleton Chunk (SKL)")
     print("- '%s'" % name)
     print("! unsupported")
+    return False
 
 
 # ----------------------------------------------------------------------------
@@ -562,6 +655,7 @@ def chunk_frm(data, idx, name):
     print("Vertex Frames Chunk (FRM)")
     print("- '%s'" % name)
     print("! unsupported")
+    return False
 
 
 # ----------------------------------------------------------------------------
@@ -569,6 +663,7 @@ def chunk_seq(data, idx, name):
     print("Sequenced Animation Chunk (SEQ)")
     print("- '%s'" % name)
     print("! unsupported")
+    return False
 
 
 # EoF

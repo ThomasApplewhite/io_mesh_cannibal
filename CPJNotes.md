@@ -37,3 +37,6 @@ So, like in the importer, z and y coordinates are swapped
 Also, in Cannibal, Rotation is always the 2nd transform operation. Not sure if that matter
 
 Do the scripts need to be in the same file? idk I'll figure that out later
+
+Current Conventions for each method:
+If a chunk method doesn't create a chunk, it returns false,

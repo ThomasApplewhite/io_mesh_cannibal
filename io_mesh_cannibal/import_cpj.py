@@ -165,10 +165,11 @@ def chunk_mac(data, idx, name):
     print("- %d Sections" % SMacFile[0])
     print("- %d Commands" % SMacFile[2])
 
-    # offset
+    # offset, block points to start of data block
     block = idx + 20 + 16
 
     # read sections
+    # points to... where the first section header is?
     shift = block + SMacFile[1]
     for i in range(SMacFile[0]):
 
@@ -177,15 +178,23 @@ def chunk_mac(data, idx, name):
         # unsigned long firstCommand // first command string index
         SMacSection = struct.unpack_from("III", data, shift)
 
+        # section name
         section = ctypes.create_string_buffer(
             data[block + SMacSection[0]:]).value.decode()
+        # The slice notation tells create_string_buffer where to start.
+        # It'll stop automatically at a null terminator
 
         # read commands
         count = SMacSection[1]
         for j in range(count):
 
+            # get 1 long with offset at block + command offset + first section command 
+            # * 4. Really, ((SMacSection[2] + j) * 4) would be more clear, but 
+            # order of operations wise its correct.
             ofs = struct.unpack_from("I", data,
                                      block + SMacFile[3] + (SMacSection[2] + j) * 4)[0]
+            # this long offset is then used to create the array of the actual
+            # command
             command = ctypes.create_string_buffer(
                 data[block + ofs:]).value.decode()
 
