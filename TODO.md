@@ -1,11 +1,13 @@
 Geo Exporter
 UV Exporter
+    Write MAC exporter for multiple Surfaces
 Get WinXP VM working to test things in
 Autoexec Exporter
     Resolve ambiguities with Autoexec offset numbers
     Find blender author name and file description
 Move inline documentation to its own document to decrease clutter
 Formatting improvements for reading ease
+
 
 Questions:
 Are offsets cumulative (is the offset for chunk X its distance from the last chunk's start, or the file's start?)
